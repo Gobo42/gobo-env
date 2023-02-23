@@ -10,13 +10,14 @@ fi
 [ -z "$(grep "PS1=" ~/.bashrc)" ] && echo "export PS1=\"\\[\\033[38;5;10m\\]\\u\\[\$(tput sgr0)\\]@\[\$(tput sgr0)\\]\[\\033[38;5;10m\\]\\h\\[\$(tput sgr0)\\]:[\\[\$(tput sgr0)\\]\[\\033[38;5;1m\\]\\w\\[\$(tput sgr0)\\]]\\\\\$\\[\$(tput sgr0)\\]\"" >> ~/.bashrc
 [ -x "$(command -v neofetch)" ] && [ -z "$(grep "neofetch" ~/.bashrc)" ] && echo "if [ -t 0 ]\; then neofetch\; fi" >> ~/.bashrc
 
+[ ! -f "~/.bash_aliases" ] && touch ~/.bash_aliases
 [ -z "$(grep "vi=vim" ~/.bash_aliases)" ] && echo "alias vi=vim" >> ~/.bash_aliases
 [ -z "$(grep "sudo='sudo" ~/.bash_aliases)" ] && echo "alias sudo='sudo '" >> ~/.bash_aliases
 [ -z "$(grep "grep='grep --color=auto" ~/.bash_aliases)" ] && echo "alias grep='grep --color=auto'" >> ~/.bash_aliases
 
 [[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ] && echo "$(whoami)    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
 
-[ ! -f ".vimrc" ] && touch ~/.vimrc
+[ ! -f "~/.vimrc" ] && touch ~/.vimrc
 [ -z "$(grep "\$VIMRUNTIME" ~/.vimrc)" ] && echo "source \$VIMRUNTIME/defaults.vim" >> ~/.vimrc
 [ -z "$(grep "mouse-=a" ~/.vimrc)" ] && echo "set mouse-=a" >> ~/.vimrc
 [ -z "$(grep "tabstop=4" ~/.vimrc)" ] && echo "set tabstop=4" >> ~/.vimrc
