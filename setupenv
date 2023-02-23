@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+if ! grep -q bash_aliases ~/.bashrc; then
+    echo "" >> ~/.bashrc
+    echo "if [ -f ~/.bash_aliases ]; then" >> ~/.bashrc
+    echo "    ~/. ~/.bash_aliases" >> ~/.bashrc
+    echo "fi" >> ~/.bashrc
+    echo "" >> ~/.bashrc
+fi
+[ -z "$(grep "PS1=" ~/.bashrc)" ] && echo "export PS1=\"\\[\\033[38;5;10m\\]\\u\\[\$(tput sgr0)\\]@\[\$(tput sgr0)\\]\[\\033[38;5;10m\\]\\h\\[\$(tput sgr0)\\]:[\\[\$(tput sgr0)\\]\[\\033[38;5;1m\\]\\w\\[\$(tput sgr0)\\]]\\\\\$\\[\$(tput sgr0)\\]\"" >> ~/.bashrc
+[ -x "$(command -v neofetch)" ] && [ -z "$(grep "neofetch" ~/.bashrc)" ] && echo "if [ -t 0 ]\; then neofetch\; fi" >> ~/.bashrc
+
+[ -z "$(grep "vi=vim" ~/.bash_aliases)" ] && echo "alias vi=vim" >> ~/.bash_aliases
+[ -z "$(grep "sudo='sudo" ~/.bash_aliases)" ] && echo "alias sudo='sudo '" >> ~/.bash_aliases
+[ -z "$(grep "grep='grep --color=auto" ~/.bash_aliases)" ] && echo "alias grep='grep --color=auto'" >> ~/.bash_aliases
+
+[[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ] && echo "$(whoami)    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
+
+[ ! -f ".vimrc" ] && touch ~/.vimrc
+[ -z "$(grep "\$VIMRUNTIME" ~/.vimrc)" ] && echo "source \$VIMRUNTIME/defaults.vim" >> ~/.vimrc
+[ -z "$(grep "mouse-=a" ~/.vimrc)" ] && echo "set mouse-=a" >> ~/.vimrc
+[ -z "$(grep "tabstop=4" ~/.vimrc)" ] && echo "set tabstop=4" >> ~/.vimrc
+[ -z "$(grep "shiftwidth=4" ~/.vimrc)" ] && echo "set shiftwidth=4" >> ~/.vimrc
+[ -z "$(grep "expandtab" ~/.vimrc)" ] && echo "set expandtab" >> ~/.vimrc
+[ -z "$(grep "smarttab" ~/.vimrc)" ] && echo "set smarttab" >> ~/.vimrc
+[ -z "$(grep "autoindent" ~/.vimrc)" ] && echo "set autoindent" >> ~/.vimrc
+[ -z "$(grep "smartindent" ~/.vimrc)" ] && echo "set smartindent" >> ~/.vimrc
+[ -z "$(grep "wrap" ~/.vimrc)" ] && echo "set wrap" >> ~/.vimrc
+[ -z "$(grep "magic" ~/.vimrc)" ] && echo "set magic" >> ~/.vimrc
+[ -z "$(grep "hidden" ~/.vimrc)" ] && echo "set hidden" >> ~/.vimrc
+[ -z "$(grep "showmatch" ~/.vimrc)" ] && echo "set showmatch" >> ~/.vimrc
+[ -z "$(grep "nnoremap <C-L>" ~/.vimrc)" ] && echo "nnoremap <C-L> :nohl<cr><C-L>" >> ~/.vimrc
+
+. ~/.bashrc
