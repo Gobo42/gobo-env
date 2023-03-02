@@ -3,7 +3,7 @@
 if ! grep -q bash_aliases ~/.bashrc; then
     echo "" >> ~/.bashrc
     echo "if [ -f ~/.bash_aliases ]; then" >> ~/.bashrc
-    echo "    ~/. ~/.bash_aliases" >> ~/.bashrc
+    echo "    . ~/.bash_aliases" >> ~/.bashrc
     echo "fi" >> ~/.bashrc
     echo "" >> ~/.bashrc
 fi
