@@ -18,7 +18,7 @@ fi
 [ -z "$(grep "grep='grep --color=auto" ~/.bash_aliases)" ] && echo "alias grep='grep --color=auto'" >> ~/.bash_aliases
 
 #fix screwup from earlier
-[[ $EUID -eq 0 ]] $$ [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${SUDO_USER:-$USER}/" /etc/sudoers.d/gobo
+[[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${SUDO_USER:-$USER}/" /etc/sudoers.d/gobo
 [[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ] && echo "${SUDO_USER:-$USER}    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
 
 [ ! -f "~/.vimrc" ] && touch ~/.vimrc
