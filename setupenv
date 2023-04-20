@@ -8,7 +8,8 @@ if ! grep -q bash_aliases ~/.bashrc; then
     echo "" >> ~/.bashrc
 fi
 [ -z "$(grep "tabs" ~/.bashrc)" ] && echo "tabs 4" >> ~/.bashrc
-[ -z "$(grep "PS1=" ~/.bashrc)" ] && echo "PS1=\"\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$\"" >> ~/.bashrc
+[ -z "$(grep -P "^\s+PS1=" ~/.bashrc)" ] && echo "PS1=\"\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$\"" >> ~/.bashrc
+# this is the actual string: PS1="\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]$"
     #echo "PS1=\"\\[\\033[38;5;10m\\]\\u\\[\$(tput sgr0)\\]@\[\$(tput sgr0)\\]\[\\033[38;5;10m\\]\\h\\[\$(tput sgr0)\\]:[\\[\$(tput sgr0)\\]\[\\033[38;5;1m\\]\\w\\[\$(tput sgr0)\\]]\\\\\$\\[\$(tput sgr0)\\]\"" >> ~/.bashrc
 [ -x "$(command -v neofetch)" ] && [ -z "$(grep "neofetch" ~/.bashrc)" ] && echo "if [ -t 0 ]\; then neofetch\; fi" >> ~/.bashrc
 
