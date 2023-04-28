@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 #If you get \033 \033 errors on noninteractive shells, then this is missing from the beginning of your .bashrc file
-case $- in
-    *i*) ;;
-      *) return;;
-esac
+#case $- in
+#    *i*) ;;
+#      *) return;;
+#esac
 
 #if .bashrc isn't running this is missing from .profile
 if [ -n "$BASH_VERSION" ]; then
