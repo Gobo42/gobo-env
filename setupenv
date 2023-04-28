@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+#If you get \033 \033 errors on noninteractive shells, then this is missing from the beginning of your .bashrc file
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+#if .bashrc isn't running this is missing from .profile
+if [ -n "$BASH_VERSION" ]; then
+    # include .bashrc if it exists
+    if [ -f "$HOME/.bashrc" ]; then
+    . "$HOME/.bashrc"
+    fi
+fi
+
 if ! grep -q bash_aliases ~/.bashrc; then
     echo "" >> ~/.bashrc
     echo "if [ -f ~/.bash_aliases ]; then" >> ~/.bashrc
@@ -7,10 +21,14 @@ if ! grep -q bash_aliases ~/.bashrc; then
     echo "fi" >> ~/.bashrc
     echo "" >> ~/.bashrc
 fi
+[ -z "$(grep "histappend" ~/.bashrc)" ] && echo "shopt -s histappend" >> ~/.bashrc
+[ -z "$(grep "HISTSIZE" ~/.bashrc)" ] && echo "HISTSIZE=1000" >> ~/.bashrc
+[ -z "$(grep "HISTFILESIZE" ~/.bashrc)" ] && echo "HISTFILESIZE=2000" >> ~/.bashrc
+[ -z "$(grep "checkwinsize" ~/.bashrc)" ] && echo "shopt -s checkwinsize" >> ~/.bashrc
 [ -z "$(grep "tabs" ~/.bashrc)" ] && echo "tabs 4" >> ~/.bashrc
+[ -z "$(grep "GCC_COLORS" ~/.bashrc)" ] && echo "export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'" >> ~/.bashrc
 [ -z "$(grep -P "^\s*PS1=" ~/.bashrc)" ] && echo "PS1=\"\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$\"" >> ~/.bashrc
 # this is the actual string: PS1="\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]$"
-    #echo "PS1=\"\\[\\033[38;5;10m\\]\\u\\[\$(tput sgr0)\\]@\[\$(tput sgr0)\\]\[\\033[38;5;10m\\]\\h\\[\$(tput sgr0)\\]:[\\[\$(tput sgr0)\\]\[\\033[38;5;1m\\]\\w\\[\$(tput sgr0)\\]]\\\\\$\\[\$(tput sgr0)\\]\"" >> ~/.bashrc
 [ -x "$(command -v neofetch)" ] && [ -z "$(grep "neofetch" ~/.bashrc)" ] && echo "if [ -t 0 ]; then neofetch; fi" >> ~/.bashrc
 
 [ ! -f "~/.bash_aliases" ] && touch ~/.bash_aliases
