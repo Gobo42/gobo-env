@@ -14,6 +14,9 @@ if [ -n "$BASH_VERSION" ]; then
     fi
 fi
 
+#install neofetch
+cp neofetch /usr/local/bin/neofetch
+
 if ! grep -q bash_aliases ~/.bashrc; then
     echo "" >> ~/.bashrc
     echo "if [ -f ~/.bash_aliases ]; then" >> ~/.bashrc
@@ -40,6 +43,14 @@ fi
 [[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${SUDO_USER:-$USER}/" /etc/sudoers.d/gobo
 [[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ] && echo "${SUDO_USER:-$USER}    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
 
+#fix dnf
+[ -z "$(grep "fastestmirror" /etc/dnf/dnf.conf)" ] && echo "fastestmirror=True" >> /etc/dnf/dnf.conf
+[ -z "$(grep "max_parallel_downloads" /etc/dnf/dnf.conf)" ] && echo "max_parallel_downloads=5" >> /etc/dnf/dnf.conf
+
+#now install stuff
+dnf -y update && dnf -y install vim
+
+#fix .vimrc
 [ ! -f "~/.vimrc" ] && touch ~/.vimrc
 [ -z "$(grep "\$VIMRUNTIME" ~/.vimrc)" ] && echo "source \$VIMRUNTIME/defaults.vim" >> ~/.vimrc
 [ -z "$(grep "mouse-=a" ~/.vimrc)" ] && echo "set mouse-=a" >> ~/.vimrc
