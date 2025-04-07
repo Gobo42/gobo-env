@@ -40,6 +40,10 @@ fi
 [ -z "$(grep "vi=vim" ~/.bash_aliases)" ] && echo "alias vi=vim" >> ~/.bash_aliases
 [ -z "$(grep "sudo='sudo" ~/.bash_aliases)" ] && echo "alias sudo='sudo '" >> ~/.bash_aliases
 [ -z "$(grep "grep='grep --color=auto" ~/.bash_aliases)" ] && echo "alias grep='grep --color=auto'" >> ~/.bash_aliases
+[ -z "$(grep "ls='ls --color=auto'" ~/.bash_aliases)" ] && echo "ls='ls --color=auto'" >> ~/.bash_aliases
+[ -z "$(grep "bat='bat -pP'" ~/.bash_aliases)" ] && echo "bat='bat -pP'" >> ~/.bash_aliases
+[ -z "$(grep "less='less -rS --use-color --incsearch -~'" ~/.bash_aliases)" ] && echo "less='less -rS --use-color --incsearch -~'" >> ~/.bash_aliases
+
 
 #fix screwup from earlier
 [[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${SUDO_USER:-$USER}/" /etc/sudoers.d/gobo
