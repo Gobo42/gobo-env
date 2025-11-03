@@ -10,4 +10,4 @@ set wrap
 set magic
 set hidden
 set showmatch
-nnoremap <C-L> :nohls<cr><C-L>
+nnoremap <C-L> :nohl<cr><C-L>
