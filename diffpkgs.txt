@@ -1,0 +1,1 @@
+ bash-completion cabextract checkinstall curl iperf3 knot-dnssecutils knot-dnsutils libcap2-bin mtools mtp-tools netselect-apt nmap pdns-tools perl-base pipx puppet-module-puppetlabs-apt python3-full python3-launchpadlib python3-setuptools python3-usb qrencode util-linux-extra vim vim-nftables vim-syntastic vim-tabular wireguard-tools zbarcam-qt zbar-tools
