@@ -6,70 +6,116 @@
 #      *) return;;
 #esac
 
+#detect the user who invoked sudo (falls back to logname for direct root logins, then $USER)
+TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null)}"
+TARGET_USER="${TARGET_USER:-$USER}"
+#resolve their real home dir - under sudo, $HOME/~ point at root's home, not theirs
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+TARGET_HOME="${TARGET_HOME:-$HOME}"
+
 #if .bashrc isn't running this is missing from .profile
 if [ -n "$BASH_VERSION" ]; then
     # include .bashrc if it exists
-    if [ -f "$HOME/.bashrc" ]; then
-    . "$HOME/.bashrc"
+    if [ -f "$TARGET_HOME/.bashrc" ]; then
+    . "$TARGET_HOME/.bashrc"
     fi
 fi
 
-#install neofetch
-cp neofetch /usr/local/bin/neofetch
-
-if ! grep -q bash_aliases ~/.bashrc; then
-    echo "" >> ~/.bashrc
-    echo "if [ -f ~/.bash_aliases ]; then" >> ~/.bashrc
-    echo "    . ~/.bash_aliases" >> ~/.bashrc
-    echo "fi" >> ~/.bashrc
-    echo "" >> ~/.bashrc
+#detect distro family
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "$ID" = "debian" ] || [ "$ID" = "ubuntu" ] || [[ "$ID_LIKE" == *debian* ]]; then
+        DISTRO_FAMILY="debian"
+    else
+        DISTRO_FAMILY="rhel"
+    fi
+else
+    DISTRO_FAMILY="rhel"
 fi
-[ -z "$(grep "histappend" ~/.bashrc)" ] && echo "shopt -s histappend" >> ~/.bashrc
-[ -z "$(grep "HISTSIZE" ~/.bashrc)" ] && echo "HISTSIZE=1000" >> ~/.bashrc
-[ -z "$(grep "HISTFILESIZE" ~/.bashrc)" ] && echo "HISTFILESIZE=2000" >> ~/.bashrc
-[ -z "$(grep "checkwinsize" ~/.bashrc)" ] && echo "shopt -s checkwinsize" >> ~/.bashrc
-[ -z "$(grep "tabs" ~/.bashrc)" ] && echo "tabs 4" >> ~/.bashrc
-[ -z "$(grep "GCC_COLORS" ~/.bashrc)" ] && echo "export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'" >> ~/.bashrc
-[ -z "$(grep -P "^\s*PS1=" ~/.bashrc)" ] && echo 'PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"' >> ~/.bashrc
+
+#default packages installed on every system - add new ones here
+COMMON_PACKAGES="vim fastfetch"
+
+if ! grep -q bash_aliases "$TARGET_HOME/.bashrc"; then
+    echo "" >> "$TARGET_HOME/.bashrc"
+    echo "if [ -f ~/.bash_aliases ]; then" >> "$TARGET_HOME/.bashrc"
+    echo "    . ~/.bash_aliases" >> "$TARGET_HOME/.bashrc"
+    echo "fi" >> "$TARGET_HOME/.bashrc"
+    echo "" >> "$TARGET_HOME/.bashrc"
+fi
+[ -z "$(grep "histappend" "$TARGET_HOME/.bashrc")" ] && echo "shopt -s histappend" >> "$TARGET_HOME/.bashrc"
+[ -z "$(grep "HISTSIZE" "$TARGET_HOME/.bashrc")" ] && echo "HISTSIZE=1000" >> "$TARGET_HOME/.bashrc"
+[ -z "$(grep "HISTFILESIZE" "$TARGET_HOME/.bashrc")" ] && echo "HISTFILESIZE=2000" >> "$TARGET_HOME/.bashrc"
+[ -z "$(grep "checkwinsize" "$TARGET_HOME/.bashrc")" ] && echo "shopt -s checkwinsize" >> "$TARGET_HOME/.bashrc"
+[ -z "$(grep "tabs" "$TARGET_HOME/.bashrc")" ] && echo "tabs 4" >> "$TARGET_HOME/.bashrc"
+[ -z "$(grep "GCC_COLORS" "$TARGET_HOME/.bashrc")" ] && echo "export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'" >> "$TARGET_HOME/.bashrc"
+[ -z "$(grep -P "^\s*PS1=" "$TARGET_HOME/.bashrc")" ] && echo 'PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"' >> "$TARGET_HOME/.bashrc"
 # new: PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"
 #old "PS1=\"\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$\"" >> ~/.bashrc
 # this is the actual string: PS1="\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]$"
-[ -x "$(command -v neofetch)" ] && [ -z "$(grep "neofetch" ~/.bashrc)" ] && echo "if [ -t 0 ]; then neofetch; fi" >> ~/.bashrc
-
-[ ! -f "~/.bash_aliases" ] && touch ~/.bash_aliases
-[ -z "$(grep "vi=vim" ~/.bash_aliases)" ] && echo "alias vi=vim" >> ~/.bash_aliases
-[ -z "$(grep "sudo='sudo" ~/.bash_aliases)" ] && echo "alias sudo='sudo '" >> ~/.bash_aliases
-[ -z "$(grep "grep='grep --color=auto" ~/.bash_aliases)" ] && echo "alias grep='grep --color=auto'" >> ~/.bash_aliases
-[ -z "$(grep "ls='ls --color=auto'" ~/.bash_aliases)" ] && echo "ls='ls --color=auto'" >> ~/.bash_aliases
-[ -z "$(grep "bat='bat -pP'" ~/.bash_aliases)" ] && echo "bat='bat -pP'" >> ~/.bash_aliases
-[ -z "$(grep "less='less -rS --use-color --incsearch -~'" ~/.bash_aliases)" ] && echo "less='less -rS --use-color --incsearch -~'" >> ~/.bash_aliases
+#recreate .bash_aliases from scratch
+cat > "$TARGET_HOME/.bash_aliases" <<'EOF'
+alias vi=vim
+alias sudo='sudo -E '
+alias grep='grep --color=auto'
+alias ls='ls --color=auto -h --group-directories-first'
+EOF
+#more -e doesn't work on rocky
+[ "$DISTRO_FAMILY" = "debian" ] && echo "alias more='more -e'" >> "$TARGET_HOME/.bash_aliases"
 
 
 #fix screwup from earlier
-[[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${SUDO_USER:-$USER}/" /etc/sudoers.d/gobo
-[[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ] && echo "${SUDO_USER:-$USER}    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
+[[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${TARGET_USER}/" /etc/sudoers.d/gobo
+if [[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ]; then
+    echo "${TARGET_USER}    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
+    chmod 440 /etc/sudoers.d/gobo
+    visudo -cf /etc/sudoers.d/gobo || rm -f /etc/sudoers.d/gobo
+fi
 
-#fix dnf
-[ -z "$(grep "fastestmirror" /etc/dnf/dnf.conf)" ] && echo "fastestmirror=True" >> /etc/dnf/dnf.conf
-[ -z "$(grep "max_parallel_downloads" /etc/dnf/dnf.conf)" ] && echo "max_parallel_downloads=5" >> /etc/dnf/dnf.conf
+if [ "$DISTRO_FAMILY" = "debian" ]; then
+    #enable backports, then convert all sources to the new deb822 .sources format
+    if [ -z "$(grep -rl "${VERSION_CODENAME}-backports" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null)" ]; then
+        echo "deb http://deb.debian.org/debian ${VERSION_CODENAME}-backports main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/backports.list
+    fi
+    apt modernize-sources -y
 
-#now install stuff
-dnf -y update && dnf -y install vim bind-utils
+    #now install stuff
+    apt-get -y update && apt-get -y install $COMMON_PACKAGES dnsutils knot-dnsutils pdns-tools
+else
+    #fix dnf
+    [ -z "$(grep "fastestmirror" /etc/dnf/dnf.conf)" ] && echo "fastestmirror=True" >> /etc/dnf/dnf.conf
+    [ -z "$(grep "max_parallel_downloads" /etc/dnf/dnf.conf)" ] && echo "max_parallel_downloads=5" >> /etc/dnf/dnf.conf
+
+    #enable EPEL, CRB (aka PowerTools), extras, and elrepo - Rocky 9 / EL9 repo ids and URL
+    dnf -y install dnf-plugins-core epel-release
+    dnf config-manager --set-enabled crb
+    dnf config-manager --set-enabled extras
+    rpm -q elrepo-release &>/dev/null || dnf -y install https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm
+
+    #now install stuff
+    dnf -y update && dnf -y install $COMMON_PACKAGES bind-utils knot-utils pdns-tools
+fi
+
+#run fastfetch on interactive shells
+[ -x "$(command -v fastfetch)" ] && [ -z "$(grep "fastfetch" "$TARGET_HOME/.bashrc")" ] && echo "if [ -t 0 ]; then fastfetch; fi" >> "$TARGET_HOME/.bashrc"
 
 #fix .vimrc
-[ ! -f "~/.vimrc" ] && touch ~/.vimrc
-[ -z "$(grep "\$VIMRUNTIME" ~/.vimrc)" ] && echo "source \$VIMRUNTIME/defaults.vim" >> ~/.vimrc
-[ -z "$(grep "mouse-=a" ~/.vimrc)" ] && echo "set mouse-=a" >> ~/.vimrc
-[ -z "$(grep "tabstop=4" ~/.vimrc)" ] && echo "set tabstop=4" >> ~/.vimrc
-[ -z "$(grep "shiftwidth=4" ~/.vimrc)" ] && echo "set shiftwidth=4" >> ~/.vimrc
-[ -z "$(grep "expandtab" ~/.vimrc)" ] && echo "set expandtab" >> ~/.vimrc
-[ -z "$(grep "smarttab" ~/.vimrc)" ] && echo "set smarttab" >> ~/.vimrc
-[ -z "$(grep "autoindent" ~/.vimrc)" ] && echo "set autoindent" >> ~/.vimrc
-[ -z "$(grep "smartindent" ~/.vimrc)" ] && echo "set smartindent" >> ~/.vimrc
-[ -z "$(grep "wrap" ~/.vimrc)" ] && echo "set wrap" >> ~/.vimrc
-[ -z "$(grep "magic" ~/.vimrc)" ] && echo "set magic" >> ~/.vimrc
-[ -z "$(grep "hidden" ~/.vimrc)" ] && echo "set hidden" >> ~/.vimrc
-[ -z "$(grep "showmatch" ~/.vimrc)" ] && echo "set showmatch" >> ~/.vimrc
-[ -z "$(grep "nnoremap <C-L>" ~/.vimrc)" ] && echo "nnoremap <C-L> :nohl<cr><C-L>" >> ~/.vimrc
+[ ! -f "$TARGET_HOME/.vimrc" ] && touch "$TARGET_HOME/.vimrc"
+[ -z "$(grep "\$VIMRUNTIME" "$TARGET_HOME/.vimrc")" ] && echo "source \$VIMRUNTIME/defaults.vim" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "mouse-=a" "$TARGET_HOME/.vimrc")" ] && echo "set mouse-=a" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "tabstop=4" "$TARGET_HOME/.vimrc")" ] && echo "set tabstop=4" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "shiftwidth=4" "$TARGET_HOME/.vimrc")" ] && echo "set shiftwidth=4" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "expandtab" "$TARGET_HOME/.vimrc")" ] && echo "set expandtab" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "smarttab" "$TARGET_HOME/.vimrc")" ] && echo "set smarttab" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "autoindent" "$TARGET_HOME/.vimrc")" ] && echo "set autoindent" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "smartindent" "$TARGET_HOME/.vimrc")" ] && echo "set smartindent" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "wrap" "$TARGET_HOME/.vimrc")" ] && echo "set wrap" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "magic" "$TARGET_HOME/.vimrc")" ] && echo "set magic" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "hidden" "$TARGET_HOME/.vimrc")" ] && echo "set hidden" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "showmatch" "$TARGET_HOME/.vimrc")" ] && echo "set showmatch" >> "$TARGET_HOME/.vimrc"
+[ -z "$(grep "nnoremap <C-L>" "$TARGET_HOME/.vimrc")" ] && echo "nnoremap <C-L> :nohl<cr><C-L>" >> "$TARGET_HOME/.vimrc"
 
-. ~/.bashrc
+#dotfiles may have just been created by root - make sure the target user actually owns them
+[[ $EUID -eq 0 ]] && chown "${TARGET_USER}:" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.bash_aliases" "$TARGET_HOME/.vimrc" 2>/dev/null
+
+. "$TARGET_HOME/.bashrc"
