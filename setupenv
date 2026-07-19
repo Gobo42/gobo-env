@@ -36,6 +36,49 @@ fi
 #default packages installed on every system - add new ones here
 COMMON_PACKAGES="vim fastfetch"
 
+#install a package if it isn't already present - pass a second arg if the install
+#target differs from the package/check name (e.g. a URL to an rpm). Reports an
+#error and skips it (without aborting the script) if the install fails.
+ensure_pkg() {
+    local pkg="$1"
+    local install_target="${2:-$1}"
+    if [ "$DISTRO_FAMILY" = "debian" ]; then
+        dpkg -s "$pkg" &>/dev/null && return
+        apt-get -y install "$install_target" || echo "ERROR: failed to install '$pkg' - skipping" >&2
+    else
+        rpm -q "$pkg" &>/dev/null && return
+        dnf -y install "$install_target" || echo "ERROR: failed to install '$pkg' - skipping" >&2
+    fi
+}
+
+#install multiple packages in a single batched call, skipping any already installed.
+#a single unknown package name fails the whole batch on both apt and dnf, so on
+#failure fall back to installing (and reporting/skipping) the rest one at a time
+ensure_pkgs() {
+    local pkg missing=()
+    for pkg in "$@"; do
+        if [ "$DISTRO_FAMILY" = "debian" ]; then
+            dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+        else
+            rpm -q "$pkg" &>/dev/null || missing+=("$pkg")
+        fi
+    done
+    [ "${#missing[@]}" -eq 0 ] && return
+
+    if [ "$DISTRO_FAMILY" = "debian" ]; then
+        apt-get -y install "${missing[@]}" && return
+    else
+        dnf -y install "${missing[@]}" && return
+    fi
+
+    for pkg in "${missing[@]}"; do
+        ensure_pkg "$pkg"
+    done
+}
+
+#make sure baseline tools are present
+ensure_pkgs curl wget bat
+
 if ! grep -q bash_aliases "$TARGET_HOME/.bashrc"; then
     echo "" >> "$TARGET_HOME/.bashrc"
     echo "if [ -f ~/.bash_aliases ]; then" >> "$TARGET_HOME/.bashrc"
@@ -63,6 +106,10 @@ EOF
 #more -e doesn't work on rocky
 [ "$DISTRO_FAMILY" = "debian" ] && echo "alias more='more -e'" >> "$TARGET_HOME/.bash_aliases"
 
+#de-duplicate any aliases defined more than once, keeping the last definition
+awk -F= '{ name=$1; last[name]=$0; if (!(name in seen)) { order[++n]=name; seen[name]=1 } }
+         END { for (i=1;i<=n;i++) print last[order[i]] }' "$TARGET_HOME/.bash_aliases" > "$TARGET_HOME/.bash_aliases.tmp" && mv "$TARGET_HOME/.bash_aliases.tmp" "$TARGET_HOME/.bash_aliases"
+
 
 #fix screwup from earlier
 [[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${TARGET_USER}/" /etc/sudoers.d/gobo
@@ -79,21 +126,36 @@ if [ "$DISTRO_FAMILY" = "debian" ]; then
     fi
     apt modernize-sources -y
 
+    #make sure the standard debian.sources components include contrib/non-free/non-free-firmware
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+        while IFS= read -r line; do
+            if [[ "$line" == Components:* ]]; then
+                for comp in contrib non-free non-free-firmware; do
+                    [[ " $line " == *" $comp "* ]] || line="$line $comp"
+                done
+            fi
+            echo "$line"
+        done < /etc/apt/sources.list.d/debian.sources > /etc/apt/sources.list.d/debian.sources.tmp
+        mv /etc/apt/sources.list.d/debian.sources.tmp /etc/apt/sources.list.d/debian.sources
+    fi
+
     #now install stuff
-    apt-get -y update && apt-get -y install $COMMON_PACKAGES dnsutils knot-dnsutils pdns-tools
+    apt-get -y update
+    ensure_pkgs $COMMON_PACKAGES dnsutils knot-dnsutils pdns-tools tealdeer
 else
     #fix dnf
     [ -z "$(grep "fastestmirror" /etc/dnf/dnf.conf)" ] && echo "fastestmirror=True" >> /etc/dnf/dnf.conf
     [ -z "$(grep "max_parallel_downloads" /etc/dnf/dnf.conf)" ] && echo "max_parallel_downloads=5" >> /etc/dnf/dnf.conf
 
     #enable EPEL, CRB (aka PowerTools), extras, and elrepo - Rocky 9 / EL9 repo ids and URL
-    dnf -y install dnf-plugins-core epel-release
-    dnf config-manager --set-enabled crb
-    dnf config-manager --set-enabled extras
-    rpm -q elrepo-release &>/dev/null || dnf -y install https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm
+    ensure_pkgs dnf-plugins-core epel-release
+    dnf config-manager --set-enabled crb extras
+    ensure_pkg elrepo-release "https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm"
 
-    #now install stuff
-    dnf -y update && dnf -y install $COMMON_PACKAGES bind-utils knot-utils pdns-tools
+    #now install stuff - makecache just refreshes repo metadata; "dnf update" is an
+    #alias for "upgrade" and would upgrade every installed package on the system
+    dnf -y makecache
+    ensure_pkgs $COMMON_PACKAGES bind-utils knot-utils pdns-tools tldr
 fi
 
 #run fastfetch on interactive shells
