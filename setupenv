@@ -90,12 +90,7 @@ fi
 [ -z "$(grep "HISTSIZE" "$TARGET_HOME/.bashrc")" ] && echo "HISTSIZE=1000" >> "$TARGET_HOME/.bashrc"
 [ -z "$(grep "HISTFILESIZE" "$TARGET_HOME/.bashrc")" ] && echo "HISTFILESIZE=2000" >> "$TARGET_HOME/.bashrc"
 [ -z "$(grep "checkwinsize" "$TARGET_HOME/.bashrc")" ] && echo "shopt -s checkwinsize" >> "$TARGET_HOME/.bashrc"
-[ -z "$(grep "tabs" "$TARGET_HOME/.bashrc")" ] && echo "tabs 4" >> "$TARGET_HOME/.bashrc"
 [ -z "$(grep "GCC_COLORS" "$TARGET_HOME/.bashrc")" ] && echo "export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'" >> "$TARGET_HOME/.bashrc"
-[ -z "$(grep -P "^\s*PS1=" "$TARGET_HOME/.bashrc")" ] && echo 'PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"' >> "$TARGET_HOME/.bashrc"
-# new: PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"
-#old "PS1=\"\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$\"" >> ~/.bashrc
-# this is the actual string: PS1="\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]$"
 #recreate .bash_aliases from scratch
 cat > "$TARGET_HOME/.bash_aliases" <<'EOF'
 alias vi=vim
@@ -158,8 +153,67 @@ else
     ensure_pkgs $COMMON_PACKAGES bind-utils knot-utils pdns-tools tldr
 fi
 
-#run fastfetch on interactive shells
-[ -x "$(command -v fastfetch)" ] && [ -z "$(grep "fastfetch" "$TARGET_HOME/.bashrc")" ] && echo "if [ -t 0 ]; then fastfetch; fi" >> "$TARGET_HOME/.bashrc"
+#interactive-shell-only settings: tab width, prompt, and the fastfetch banner.
+#finds the existing "if [ -t 0 ]; then ... fi" block (if any) and only inserts
+#whichever of these three lines are missing *inside that block* - the bashrc may
+#have other PS1 lines earlier that are outside this block and must be ignored.
+patch_interactive_bashrc() {
+    local tabs_line='    tabs 4'
+    local ps1_line='    PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"'
+    local fastfetch_line='    fastfetch'
+    local want_fastfetch=0
+    [ -x "$(command -v fastfetch)" ] && want_fastfetch=1
+
+    mapfile -t lines < "$TARGET_HOME/.bashrc"
+
+    local block_start=-1 block_end=-1 i
+    for i in "${!lines[@]}"; do
+        if [ "${lines[$i]}" = "if [ -t 0 ]; then" ]; then
+            block_start=$i
+            continue
+        fi
+        if [ "$block_start" -ge 0 ] && [ "${lines[$i]}" = "fi" ]; then
+            block_end=$i
+            break
+        fi
+    done
+
+    local have_tabs=0 have_ps1=0 have_fastfetch=0
+    if [ "$block_start" -ge 0 ] && [ "$block_end" -ge 0 ]; then
+        for ((i = block_start + 1; i < block_end; i++)); do
+            case "${lines[$i]}" in
+                *"tabs 4"*) have_tabs=1 ;;
+                *"PS1="*) have_ps1=1 ;;
+                *"fastfetch"*) have_fastfetch=1 ;;
+            esac
+        done
+    fi
+
+    if [ "$block_start" -ge 0 ] && [ "$block_end" -ge 0 ]; then
+        local new_lines=()
+        [ "$have_tabs" -eq 0 ] && new_lines+=("$tabs_line")
+        [ "$have_ps1" -eq 0 ] && new_lines+=("$ps1_line")
+        [ "$want_fastfetch" -eq 1 ] && [ "$have_fastfetch" -eq 0 ] && new_lines+=("$fastfetch_line")
+        if [ "${#new_lines[@]}" -gt 0 ]; then
+            {
+                printf '%s\n' "${lines[@]:0:$block_end}"
+                printf '%s\n' "${new_lines[@]}"
+                printf '%s\n' "${lines[@]:$block_end}"
+            } > "$TARGET_HOME/.bashrc.tmp" && mv "$TARGET_HOME/.bashrc.tmp" "$TARGET_HOME/.bashrc"
+        fi
+    else
+        {
+            echo ""
+            echo "#interactive shell settings"
+            echo "if [ -t 0 ]; then"
+            echo "$tabs_line"
+            echo "$ps1_line"
+            [ "$want_fastfetch" -eq 1 ] && echo "$fastfetch_line"
+            echo "fi"
+        } >> "$TARGET_HOME/.bashrc"
+    fi
+}
+patch_interactive_bashrc
 
 #fix .vimrc
 [ ! -f "$TARGET_HOME/.vimrc" ] && touch "$TARGET_HOME/.vimrc"
