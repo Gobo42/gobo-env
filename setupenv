@@ -34,7 +34,7 @@ else
 fi
 
 #default packages installed on every system - add new ones here
-COMMON_PACKAGES="vim fastfetch"
+COMMON_PACKAGES="vim fastfetch vim-fugitive vim-ale"
 
 #install a package if it isn't already present - pass a second arg if the install
 #target differs from the package/check name (e.g. a URL to an rpm). Reports an
@@ -117,7 +117,7 @@ fi
 if [ "$DISTRO_FAMILY" = "debian" ]; then
     #enable backports, then convert all sources to the new deb822 .sources format
     if [ -z "$(grep -rl "${VERSION_CODENAME}-backports" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null)" ]; then
-        echo "deb http://deb.debian.org/debian ${VERSION_CODENAME}-backports main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/backports.list
+        echo "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian ${VERSION_CODENAME}-backports main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/backports.list
     fi
     apt modernize-sources -y
 
@@ -136,7 +136,36 @@ if [ "$DISTRO_FAMILY" = "debian" ]; then
 
     #now install stuff
     apt-get -y update
-    ensure_pkgs $COMMON_PACKAGES dnsutils knot-dnsutils pdns-tools tealdeer
+    ensure_pkgs $COMMON_PACKAGES dnsutils knot-dnsutils pdns-tools tealdeer ssh-import-id vim-nftables vim-syntastic vim-airline universal-ctags
+
+    #turn on tealdeer's auto-update and seed its page cache now
+    if [ -x "$(command -v tldr)" ]; then
+        [ -f "$TARGET_HOME/.config/tealdeer/config.toml" ] || runuser -u "$TARGET_USER" -- tldr --seed-config
+        awk '
+            BEGIN { in_updates=0; have_auto_update=0; seen_updates_section=0 }
+            /^\[updates\]/ { in_updates=1; seen_updates_section=1; print; next }
+            /^\[/ {
+                if (in_updates && !have_auto_update) { print "auto_update = true"; have_auto_update=1 }
+                in_updates=0
+                print
+                next
+            }
+            {
+                if (in_updates && $0 ~ /^[[:space:]]*auto_update[[:space:]]*=/) {
+                    print "auto_update = true"
+                    have_auto_update=1
+                    next
+                }
+                print
+            }
+            END {
+                if (in_updates && !have_auto_update) { print "auto_update = true"; have_auto_update=1 }
+                if (!seen_updates_section) { print "[updates]"; print "auto_update = true" }
+            }
+        ' "$TARGET_HOME/.config/tealdeer/config.toml" > "$TARGET_HOME/.config/tealdeer/config.toml.tmp" && mv "$TARGET_HOME/.config/tealdeer/config.toml.tmp" "$TARGET_HOME/.config/tealdeer/config.toml"
+        [[ $EUID -eq 0 ]] && chown -R "${TARGET_USER}:" "$TARGET_HOME/.config/tealdeer"
+        runuser -u "$TARGET_USER" -- tldr --update
+    fi
 else
     #fix dnf
     [ -z "$(grep "fastestmirror" /etc/dnf/dnf.conf)" ] && echo "fastestmirror=True" >> /etc/dnf/dnf.conf
@@ -150,8 +179,13 @@ else
     #now install stuff - makecache just refreshes repo metadata; "dnf update" is an
     #alias for "upgrade" and would upgrade every installed package on the system
     dnf -y makecache
-    ensure_pkgs $COMMON_PACKAGES bind-utils knot-utils pdns-tools tldr
+    ensure_pkgs $COMMON_PACKAGES bind-utils knot-utils pdns-tools tldr ctags
 fi
+
+#pull ssh public keys from github and drop them into the target user's authorized_keys.
+#ssh-import-id is idempotent (skips keys it's already added), and creates ~/.ssh with
+#the right permissions itself, so it just needs to run as that user, not root.
+[ -x "$(command -v ssh-import-id)" ] && runuser -u "$TARGET_USER" -- ssh-import-id gh:gobo42
 
 #interactive-shell-only settings: tab width, prompt, and the fastfetch banner.
 #finds the existing "if [ -t 0 ]; then ... fi" block (if any) and only inserts
