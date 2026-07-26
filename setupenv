@@ -100,6 +100,8 @@ alias ls='ls --color=auto -h --group-directories-first'
 EOF
 #more -e doesn't work on rocky
 [ "$DISTRO_FAMILY" = "debian" ] && echo "alias more='more -e'" >> "$TARGET_HOME/.bash_aliases"
+#debian's bat package ships the binary as batcat (name collision with another package); rocky's doesn't
+[ "$DISTRO_FAMILY" = "debian" ] && echo "alias bat='batcat'" >> "$TARGET_HOME/.bash_aliases"
 
 #de-duplicate any aliases defined more than once, keeping the last definition
 awk -F= '{ name=$1; last[name]=$0; if (!(name in seen)) { order[++n]=name; seen[name]=1 } }
