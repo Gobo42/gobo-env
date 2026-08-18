@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+#sets up a user-level python via uv (never touches debian's system python), lets
+#you pick which version to install/switch to from a menu (like nvm), and wires
+#up ~/.venv to auto-activate on every interactive shell - no root needed anywhere.
+
+set -euo pipefail
+
+VENVS_DIR="$HOME/.venvs"
+ACTIVE_VENV="$HOME/.venv"
+
+#install uv (user-space, no root needed) if it isn't already present
+if ! command -v uv &>/dev/null; then
+    echo "uv not found - installing..."
+    if command -v curl &>/dev/null; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    elif command -v wget &>/dev/null; then
+        wget -qO- https://astral.sh/uv/install.sh | sh
+    else
+        echo "ERROR: need curl or wget installed to fetch the uv installer" >&2
+        exit 1
+    fi
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+mkdir -p "$VENVS_DIR"
+
+#figure out which version (if any) is currently active
+current=""
+if [ -L "$ACTIVE_VENV" ]; then
+    current="$(basename "$(readlink -f "$ACTIVE_VENV")")"
+fi
+
+#versions that already have a venv set up under ~/.venvs
+mapfile -t installed_versions < <(find "$VENVS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -Vr)
+
+#stable cpython versions uv can download (excludes beta/rc and freethreaded builds)
+mapfile -t downloadable_versions < <(uv python list --only-downloads | awk '{print $1}' | grep -E '^cpython-[0-9]+\.[0-9]+\.[0-9]+-linux-x86_64-gnu$' | sed -E 's/^cpython-//; s/-linux.*//')
+
+#build the menu: installed versions first (marked), then anything downloadable that isn't already installed
+options=()
+for v in "${installed_versions[@]}"; do
+    if [ "$v" = "$current" ]; then
+        options+=("$v (installed, active)")
+    else
+        options+=("$v (installed)")
+    fi
+done
+for v in "${downloadable_versions[@]}"; do
+    already=0
+    for iv in "${installed_versions[@]}"; do
+        [ "$v" = "$iv" ] && already=1 && break
+    done
+    [ "$already" -eq 0 ] && options+=("$v (install)")
+done
+
+echo "Python versions:"
+PS3="Pick a version to install/switch to (Ctrl+C to cancel): "
+select choice in "${options[@]}"; do
+    [ -n "$choice" ] && break
+    echo "Invalid selection, try again."
+done
+
+version="${choice%% *}"
+
+#install the interpreter (no-op if uv already has it) and build its venv if this is a new version
+uv python install "$version"
+venv_path="$VENVS_DIR/$version"
+if [ ! -d "$venv_path" ]; then
+    uv venv --python "$version" --seed "$venv_path"
+fi
+
+#point ~/.venv at the chosen version - back up anything there that isn't already our symlink
+if [ -e "$ACTIVE_VENV" ] && [ ! -L "$ACTIVE_VENV" ]; then
+    echo "Backing up existing $ACTIVE_VENV to ${ACTIVE_VENV}.bak"
+    mv "$ACTIVE_VENV" "${ACTIVE_VENV}.bak"
+fi
+ln -sfn "$venv_path" "$ACTIVE_VENV"
+
+#auto-activate on every interactive shell, without the "(.venv)" prompt prefix -
+#the activate script itself honors VIRTUAL_ENV_DISABLE_PROMPT, no need to patch it
+[ -z "$(grep "VIRTUAL_ENV_DISABLE_PROMPT" "$HOME/.bashrc" 2>/dev/null)" ] && echo "export VIRTUAL_ENV_DISABLE_PROMPT=1" >> "$HOME/.bashrc"
+if ! grep -q '\.venv/bin/activate' "$HOME/.bashrc" 2>/dev/null; then
+    {
+        echo ""
+        echo "if [ -f ~/.venv/bin/activate ]; then"
+        echo "    . ~/.venv/bin/activate"
+        echo "fi"
+    } >> "$HOME/.bashrc"
+fi
+
+echo ""
+echo "Python $version is active at $ACTIVE_VENV"
+echo "Run 'source ~/.bashrc' or open a new shell to activate it now."
