@@ -92,6 +92,8 @@ fi
 [ -z "$(grep "checkwinsize" "$TARGET_HOME/.bashrc")" ] && echo "shopt -s checkwinsize" >> "$TARGET_HOME/.bashrc"
 [ -z "$(grep "GCC_COLORS" "$TARGET_HOME/.bashrc")" ] && echo "export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'" >> "$TARGET_HOME/.bashrc"
 [ -z "$(grep "SYSTEMD_EDITOR" "$TARGET_HOME/.bashrc")" ] && echo "export SYSTEMD_EDITOR=vim" >> "$TARGET_HOME/.bashrc"
+#suppresses the "(.venv)" prompt prefix from any venv's activate script, without needing to patch the script itself
+[ -z "$(grep "VIRTUAL_ENV_DISABLE_PROMPT" "$TARGET_HOME/.bashrc")" ] && echo "export VIRTUAL_ENV_DISABLE_PROMPT=1" >> "$TARGET_HOME/.bashrc"
 #recreate .bash_aliases from scratch
 cat > "$TARGET_HOME/.bash_aliases" <<'EOF'
 alias vi=vim
