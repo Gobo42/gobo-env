@@ -126,6 +126,32 @@ if [ "$DISTRO_FAMILY" = "debian" ]; then
     fi
     apt modernize-sources -y
 
+    #modernize-sources can't always determine a Signed-By for the backports suite - e.g.
+    #when a *-backports entry already existed before this script ran (installer-added,
+    #a mirror selection, or an older version of this script), it won't have the
+    #[signed-by=] bracket our own backports.list line includes, so it comes out of
+    #modernize-sources with an empty Signed-By. Find and repair any such stanza across
+    #every .sources file, without touching unrelated repos that just happen to also
+    #publish a "*-backports" suite under their own (non-empty) signing key.
+    for f in /etc/apt/sources.list.d/*.sources; do
+        [ -f "$f" ] || continue
+        awk -v suite="${VERSION_CODENAME}-backports" '
+            BEGIN { RS=""; FS="\n"; ORS="\n\n" }
+            {
+                is_backports=0
+                for (i=1; i<=NF; i++) { if ($i ~ "^Suites:.*" suite) is_backports=1 }
+                if (is_backports) {
+                    for (i=1; i<=NF; i++) {
+                        if ($i ~ /^Signed-By:[[:space:]]*$/) { $i = "Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg" }
+                    }
+                }
+                out = $1
+                for (i=2; i<=NF; i++) out = out "\n" $i
+                print out
+            }
+        ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    done
+
     #make sure the standard debian.sources components include contrib/non-free/non-free-firmware
     if [ -f /etc/apt/sources.list.d/debian.sources ]; then
         while IFS= read -r line; do
@@ -191,6 +217,15 @@ fi
 #ssh-import-id is idempotent (skips keys it's already added), and creates ~/.ssh with
 #the right permissions itself, so it just needs to run as that user, not root.
 [ -x "$(command -v ssh-import-id)" ] && runuser -u "$TARGET_USER" -- ssh-import-id gh:gobo42
+
+#generate an outgoing ed25519 keypair if one doesn't already exist - fully unattended
+#(no passphrase, no prompts), created as the target user so it's owned correctly
+if [ ! -f "$TARGET_HOME/.ssh/id_ed25519" ]; then
+    mkdir -p "$TARGET_HOME/.ssh"
+    chmod 700 "$TARGET_HOME/.ssh"
+    [[ $EUID -eq 0 ]] && chown "${TARGET_USER}:" "$TARGET_HOME/.ssh"
+    runuser -u "$TARGET_USER" -- ssh-keygen -t ed25519 -N "" -f "$TARGET_HOME/.ssh/id_ed25519" -q
+fi
 
 #interactive-shell-only settings: tab width, prompt, and the fastfetch banner.
 #finds the existing "if [ -t 0 ]; then ... fi" block (if any) and only inserts
