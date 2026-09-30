@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+#package installs, sudoers and runuser all need root
+if [[ $EUID -ne 0 ]]; then
+    echo "ERROR: run this with sudo" >&2
+    exit 1
+fi
+
 #If you get \033 \033 errors on noninteractive shells, then this is missing from the beginning of your .bashrc file
 #case $- in
 #    *i*) ;;
@@ -13,28 +19,20 @@ TARGET_USER="${TARGET_USER:-$USER}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TARGET_HOME="${TARGET_HOME:-$HOME}"
 
-#if .bashrc isn't running this is missing from .profile
-if [ -n "$BASH_VERSION" ]; then
-    # include .bashrc if it exists
-    if [ -f "$TARGET_HOME/.bashrc" ]; then
-    . "$TARGET_HOME/.bashrc"
-    fi
-fi
-
-#detect distro family
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    if [ "$ID" = "debian" ] || [ "$ID" = "ubuntu" ] || [[ "$ID_LIKE" == *debian* ]]; then
-        DISTRO_FAMILY="debian"
-    else
-        DISTRO_FAMILY="rhel"
-    fi
-else
+#detect distro family - only debian trixie and EL9 (rocky) are supported; anything
+#else should be upgraded first rather than patched around here
+[ -f /etc/os-release ] && . /etc/os-release
+if [ "$ID" = "debian" ] && [ "$VERSION_CODENAME" = "trixie" ]; then
+    DISTRO_FAMILY="debian"
+elif [[ "$ID_LIKE" == *rhel* ]] && [ "${VERSION_ID%%.*}" = "9" ]; then
     DISTRO_FAMILY="rhel"
+else
+    echo "ERROR: unsupported system '${PRETTY_NAME:-unknown}' - upgrade to debian trixie or rocky 9 first" >&2
+    exit 1
 fi
 
 #default packages installed on every system - add new ones here
-COMMON_PACKAGES="vim fastfetch vim-fugitive vim-ale"
+COMMON_PACKAGES="curl wget bat fastfetch vim-fugitive vim-ale rsync"
 
 #install a package if it isn't already present - pass a second arg if the install
 #target differs from the package/check name (e.g. a URL to an rpm). Reports an
@@ -76,9 +74,6 @@ ensure_pkgs() {
     done
 }
 
-#make sure baseline tools are present
-ensure_pkgs curl wget bat
-
 if ! grep -q bash_aliases "$TARGET_HOME/.bashrc"; then
     echo "" >> "$TARGET_HOME/.bashrc"
     echo "if [ -f ~/.bash_aliases ]; then" >> "$TARGET_HOME/.bashrc"
@@ -112,8 +107,8 @@ awk -F= '{ name=$1; last[name]=$0; if (!(name in seen)) { order[++n]=name; seen[
 
 
 #fix screwup from earlier
-[[ $EUID -eq 0 ]] && [ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${TARGET_USER}/" /etc/sudoers.d/gobo
-if [[ $EUID -eq 0 ]] && [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ]; then
+[ -f "/etc/sudoers.d/gobo" ] && [ ! -z "$(grep "root" /etc/sudoers.d/gobo)" ] && sed -i "s/root/${TARGET_USER}/" /etc/sudoers.d/gobo
+if [ -d "/etc/sudoers.d" ] && [ ! -f "/etc/sudoers.d/gobo" ]; then
     echo "${TARGET_USER}    ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gobo
     chmod 440 /etc/sudoers.d/gobo
     visudo -cf /etc/sudoers.d/gobo || rm -f /etc/sudoers.d/gobo
@@ -167,7 +162,7 @@ if [ "$DISTRO_FAMILY" = "debian" ]; then
 
     #now install stuff
     apt-get -y update
-    ensure_pkgs $COMMON_PACKAGES dnsutils knot-dnsutils pdns-tools tealdeer ssh-import-id vim-nftables vim-syntastic vim-airline universal-ctags
+    ensure_pkgs $COMMON_PACKAGES vim dnsutils knot-dnsutils pdns-tools tealdeer ssh-import-id vim-nftables vim-syntastic vim-airline universal-ctags
 
     #turn on tealdeer's auto-update and seed its page cache now
     if [ -x "$(command -v tldr)" ]; then
@@ -194,7 +189,7 @@ if [ "$DISTRO_FAMILY" = "debian" ]; then
                 if (!seen_updates_section) { print "[updates]"; print "auto_update = true" }
             }
         ' "$TARGET_HOME/.config/tealdeer/config.toml" > "$TARGET_HOME/.config/tealdeer/config.toml.tmp" && mv "$TARGET_HOME/.config/tealdeer/config.toml.tmp" "$TARGET_HOME/.config/tealdeer/config.toml"
-        [[ $EUID -eq 0 ]] && chown -R "${TARGET_USER}:" "$TARGET_HOME/.config/tealdeer"
+        chown -R "${TARGET_USER}:" "$TARGET_HOME/.config/tealdeer"
         runuser -u "$TARGET_USER" -- tldr --update
     fi
 else
@@ -202,7 +197,7 @@ else
     [ -z "$(grep "fastestmirror" /etc/dnf/dnf.conf)" ] && echo "fastestmirror=True" >> /etc/dnf/dnf.conf
     [ -z "$(grep "max_parallel_downloads" /etc/dnf/dnf.conf)" ] && echo "max_parallel_downloads=5" >> /etc/dnf/dnf.conf
 
-    #enable EPEL, CRB (aka PowerTools), extras, and elrepo - Rocky 9 / EL9 repo ids and URL
+    #enable EPEL, CRB, extras, and elrepo - Rocky 9 / EL9 repo ids and URL
     ensure_pkgs dnf-plugins-core epel-release
     dnf config-manager --set-enabled crb extras
     ensure_pkg elrepo-release "https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm"
@@ -210,30 +205,54 @@ else
     #now install stuff - makecache just refreshes repo metadata; "dnf update" is an
     #alias for "upgrade" and would upgrade every installed package on the system
     dnf -y makecache
-    ensure_pkgs $COMMON_PACKAGES bind-utils knot-utils pdns-tools tldr ctags
+    #"vim" is only a provides on rocky, so rpm -q never sees it installed - use the real package name
+    ensure_pkgs $COMMON_PACKAGES vim-enhanced bind-utils knot-utils pdns-tools tldr ctags
 fi
 
 #pull ssh public keys from github and drop them into the target user's authorized_keys.
 #ssh-import-id is idempotent (skips keys it's already added), and creates ~/.ssh with
 #the right permissions itself, so it just needs to run as that user, not root.
-[ -x "$(command -v ssh-import-id)" ] && runuser -u "$TARGET_USER" -- ssh-import-id gh:gobo42
+#rocky doesn't package ssh-import-id, so there fetch the keys straight from github and
+#append any that aren't already present.
+if [ -x "$(command -v ssh-import-id)" ]; then
+    runuser -u "$TARGET_USER" -- ssh-import-id gh:gobo42
+else
+    runuser -u "$TARGET_USER" -- bash -c '
+        mkdir -p "$1/.ssh" && chmod 700 "$1/.ssh"
+        touch "$1/.ssh/authorized_keys" && chmod 600 "$1/.ssh/authorized_keys"
+        keys="$(curl -fsSL https://github.com/gobo42.keys)" || exit 1
+        while IFS= read -r key; do
+            if [ -n "$key" ] && ! grep -qxF "$key" "$1/.ssh/authorized_keys"; then
+                echo "$key" >> "$1/.ssh/authorized_keys"
+            fi
+        done <<< "$keys"' _ "$TARGET_HOME" || echo "ERROR: failed to import github ssh keys - skipping" >&2
+fi
 
 #generate an outgoing ed25519 keypair if one doesn't already exist - fully unattended
 #(no passphrase, no prompts), created as the target user so it's owned correctly
 if [ ! -f "$TARGET_HOME/.ssh/id_ed25519" ]; then
     mkdir -p "$TARGET_HOME/.ssh"
     chmod 700 "$TARGET_HOME/.ssh"
-    [[ $EUID -eq 0 ]] && chown "${TARGET_USER}:" "$TARGET_HOME/.ssh"
+    chown "${TARGET_USER}:" "$TARGET_HOME/.ssh"
     runuser -u "$TARGET_USER" -- ssh-keygen -t ed25519 -N "" -f "$TARGET_HOME/.ssh/id_ed25519" -q
 fi
 
-#interactive-shell-only settings: tab width, prompt, and the fastfetch banner.
+#interactive-shell-only settings: tab width, prompt, window title, and the fastfetch banner.
 #finds the existing "if [ -t 0 ]; then ... fi" block (if any) and only inserts
-#whichever of these three lines are missing *inside that block* - the bashrc may
+#whichever of these lines are missing *inside that block* - the bashrc may
 #have other PS1 lines earlier that are outside this block and must be ignored.
 patch_interactive_bashrc() {
     local tabs_line='    tabs 4'
     local ps1_line='    PS1="(\[\033[01;34m\]\t\[\033[0m\])\[\033[38;5;10m\]\u\[\033[0m\]@\[\033[38;5;10m\]\h\[\033[0m\]:[\[\033[38;5;1m\]\w\[\033[0m\]]\$"'
+    #set the terminal tab title to user@host on every prompt (so it's put back after ssh-ing
+    #elsewhere). our PS1 above replaces debian's title-setting PS1, and rocky's PROMPT_COMMAND
+    #only sets screen's internal window name - inside screen the xterm title sequence has
+    #to be wrapped in a DCS passthrough (ESC P ... ESC \) to reach the outer terminal.
+    local title_line
+    title_line=$(cat <<'EOF'
+    __set_title() { local t="${USER}@${HOSTNAME%%.*}"; if [[ "$TERM" == screen* ]]; then printf '\033P\033]0;%s\007\033\\' "$t"; else printf '\033]0;%s\007' "$t"; fi; }; PROMPT_COMMAND=__set_title
+EOF
+)
     local fastfetch_line='    fastfetch'
     local want_fastfetch=0
     [ -x "$(command -v fastfetch)" ] && want_fastfetch=1
@@ -252,12 +271,13 @@ patch_interactive_bashrc() {
         fi
     done
 
-    local have_tabs=0 have_ps1=0 have_fastfetch=0
+    local have_tabs=0 have_ps1=0 have_title=0 have_fastfetch=0
     if [ "$block_start" -ge 0 ] && [ "$block_end" -ge 0 ]; then
         for ((i = block_start + 1; i < block_end; i++)); do
             case "${lines[$i]}" in
                 *"tabs 4"*) have_tabs=1 ;;
                 *"PS1="*) have_ps1=1 ;;
+                *"__set_title"*) have_title=1 ;;
                 *"fastfetch"*) have_fastfetch=1 ;;
             esac
         done
@@ -267,6 +287,7 @@ patch_interactive_bashrc() {
         local new_lines=()
         [ "$have_tabs" -eq 0 ] && new_lines+=("$tabs_line")
         [ "$have_ps1" -eq 0 ] && new_lines+=("$ps1_line")
+        [ "$have_title" -eq 0 ] && new_lines+=("$title_line")
         [ "$want_fastfetch" -eq 1 ] && [ "$have_fastfetch" -eq 0 ] && new_lines+=("$fastfetch_line")
         if [ "${#new_lines[@]}" -gt 0 ]; then
             {
@@ -282,6 +303,7 @@ patch_interactive_bashrc() {
             echo "if [ -t 0 ]; then"
             echo "$tabs_line"
             echo "$ps1_line"
+            echo "$title_line"
             [ "$want_fastfetch" -eq 1 ] && echo "$fastfetch_line"
             echo "fi"
         } >> "$TARGET_HOME/.bashrc"
@@ -305,7 +327,10 @@ patch_interactive_bashrc
 [ -z "$(grep "showmatch" "$TARGET_HOME/.vimrc")" ] && echo "set showmatch" >> "$TARGET_HOME/.vimrc"
 [ -z "$(grep "nnoremap <C-L>" "$TARGET_HOME/.vimrc")" ] && echo "nnoremap <C-L> :nohl<cr><C-L>" >> "$TARGET_HOME/.vimrc"
 
-#dotfiles may have just been created by root - make sure the target user actually owns them
-[[ $EUID -eq 0 ]] && chown "${TARGET_USER}:" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.bash_aliases" "$TARGET_HOME/.vimrc" 2>/dev/null
+#fix .screenrc - ti@:te@ stops screen using the alternate screen, so its output lands in the
+#terminal's own scrollback and the mouse wheel scrolls it
+[ ! -f "$TARGET_HOME/.screenrc" ] && touch "$TARGET_HOME/.screenrc"
+[ -z "$(grep "ti@:te@" "$TARGET_HOME/.screenrc")" ] && echo "termcapinfo xterm* ti@:te@" >> "$TARGET_HOME/.screenrc"
 
-. "$TARGET_HOME/.bashrc"
+#dotfiles may have just been created by root - make sure the target user actually owns them
+chown "${TARGET_USER}:" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.bash_aliases" "$TARGET_HOME/.vimrc" "$TARGET_HOME/.screenrc" 2>/dev/null
