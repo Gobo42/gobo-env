@@ -160,9 +160,17 @@ if [ "$DISTRO_FAMILY" = "debian" ]; then
         mv /etc/apt/sources.list.d/debian.sources.tmp /etc/apt/sources.list.d/debian.sources
     fi
 
+    #modernize-sources drops [arch=] from old .list entries - and claude/chrome rewrite their
+    #own repo files on update - so with i386 enabled apt warns about every repo that doesn't
+    #carry it. Install fixrepos.sh as a root-owned copy (apt runs the hook as root, so it must
+    #not point into a user-writable dir) and run it before every "apt update", plus once now.
+    install -m 755 -o root -g root "$(dirname "$(readlink -f "$0")")/fixrepos.sh" /usr/local/sbin/fixrepos.sh
+    echo 'APT::Update::Pre-Invoke { "/usr/local/sbin/fixrepos.sh || true"; };' > /etc/apt/apt.conf.d/99fixrepos
+    /usr/local/sbin/fixrepos.sh
+
     #now install stuff
     apt-get -y update
-    ensure_pkgs $COMMON_PACKAGES vim dnsutils knot-dnsutils pdns-tools tealdeer ssh-import-id vim-nftables vim-syntastic vim-airline universal-ctags
+    ensure_pkgs $COMMON_PACKAGES vim bind9-dnsutils knot-dnsutils pdns-tools tealdeer ssh-import-id vim-nftables vim-syntastic vim-airline universal-ctags
 
     #turn on tealdeer's auto-update and seed its page cache now
     if [ -x "$(command -v tldr)" ]; then
@@ -332,5 +340,12 @@ patch_interactive_bashrc
 [ ! -f "$TARGET_HOME/.screenrc" ] && touch "$TARGET_HOME/.screenrc"
 [ -z "$(grep "ti@:te@" "$TARGET_HOME/.screenrc")" ] && echo "termcapinfo xterm* ti@:te@" >> "$TARGET_HOME/.screenrc"
 
+#honor the server's filename (Content-Disposition) - rc files, not aliases, so scripts/cron/sudo get it too.
+#curl only applies remote-header-name when -O is used, so plain "curl url | ..." is unaffected
+[ ! -f "$TARGET_HOME/.wgetrc" ] && touch "$TARGET_HOME/.wgetrc"
+[ -z "$(grep "content_disposition" "$TARGET_HOME/.wgetrc")" ] && echo "content_disposition = on" >> "$TARGET_HOME/.wgetrc"
+[ ! -f "$TARGET_HOME/.curlrc" ] && touch "$TARGET_HOME/.curlrc"
+[ -z "$(grep "remote-header-name" "$TARGET_HOME/.curlrc")" ] && echo "remote-header-name" >> "$TARGET_HOME/.curlrc"
+
 #dotfiles may have just been created by root - make sure the target user actually owns them
-chown "${TARGET_USER}:" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.bash_aliases" "$TARGET_HOME/.vimrc" "$TARGET_HOME/.screenrc" 2>/dev/null
+chown "${TARGET_USER}:" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.bash_aliases" "$TARGET_HOME/.vimrc" "$TARGET_HOME/.screenrc" "$TARGET_HOME/.wgetrc" "$TARGET_HOME/.curlrc" 2>/dev/null
