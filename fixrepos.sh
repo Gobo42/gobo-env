@@ -67,3 +67,22 @@ for f in "$SOURCES_DIR"/*.sources; do
     printf '%s' "$out" > "$f.tmp"
     if cmp -s "$f" "$f.tmp"; then rm -f "$f.tmp"; else mv "$f.tmp" "$f"; echo "fixrepos: updated $f"; fi
 done
+
+#a package can recreate its legacy .list next to the .sources we already have for the same repo
+#(claude-desktop does on every update), which makes apt warn "configured multiple times ... .list:N
+#and .sources:M". Comment out any .list entry whose URI+suite a .sources file already covers.
+keys="$(mktemp)"
+awk 'BEGIN{RS="";FS="\n"} {u=s=""; for(i=1;i<=NF;i++){if($i~/^URIs:/){sub(/^URIs: */,"",$i);u=$i} if($i~/^Suites:/){sub(/^Suites: */,"",$i);s=$i}}
+     n=split(u,U," "); m=split(s,S," "); for(a=1;a<=n;a++)for(b=1;b<=m;b++){x=U[a]; sub(/\/$/,"",x); print x" "S[b]}}' "$SOURCES_DIR"/*.sources > "$keys" 2>/dev/null
+for f in "$SOURCES_DIR"/*.list; do
+    [ -f "$f" ] || continue
+    awk 'NR==FNR{k[$0]=1; next}
+         /^[[:space:]]*deb(-src)?[[:space:]]/ {
+             t=$0; sub(/^[[:space:]]*deb(-src)?[[:space:]]+/,"",t); sub(/^\[[^]]*\][[:space:]]*/,"",t)
+             split(t,p," "); u=p[1]; sub(/\/$/,"",u)
+             if ((u" "p[2]) in k) { print "# " $0; next }
+         }
+         {print}' "$keys" "$f" > "$f.tmp"
+    if cmp -s "$f" "$f.tmp"; then rm -f "$f.tmp"; else mv "$f.tmp" "$f"; echo "fixrepos: disabled entries in $f already covered by a .sources file"; fi
+done
+rm -f "$keys"
